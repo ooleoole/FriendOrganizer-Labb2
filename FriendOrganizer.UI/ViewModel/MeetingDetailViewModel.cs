@@ -29,6 +29,7 @@ namespace FriendOrganizer.UI.ViewModel
         private readonly ILocationService _locationService;
         private readonly IWeatherService _weatherService;
         private ObservableCollection<Weather> _weathers;
+        private bool _threadLock;
 
         public MeetingWrapper Meeting
         {
@@ -100,15 +101,7 @@ namespace FriendOrganizer.UI.ViewModel
             LoadWeatherCommand = new DelegateCommand(OnLoadWeatherExecute, OnLoadWeatherCanExecute);
         }
 
-        private bool OnLoadWeatherCanExecute()
-        {
-            return Meeting.LocationName != string.Empty;
-        }
 
-        private async void OnLoadWeatherExecute()
-        {
-            await SetupWeather();
-        }
 
 
         public override async Task LoadAsync(int meetingId)
@@ -130,27 +123,30 @@ namespace FriendOrganizer.UI.ViewModel
 
         protected override async void OnDeleteExecute()
         {
+            _threadLock = true;
             var result = await MessageDialogService.ShowOkCancelDialogAsync($"Do you really want to delete the meeting {Meeting.Title}?", "Question");
             if (result != MessageDialogResult.OK) return;
             _meetingRepository.Remove(Meeting.Model);
             await _meetingRepository.SaveAsync();
             RaiseDetailDeletedEvent(Meeting.Id);
+            _threadLock = false;
         }
 
         protected override bool OnSaveCanExecute()
         {
-            return Meeting != null && !Meeting.HasErrors && HasChanges;
+            return Meeting != null && !Meeting.HasErrors && HasChanges && !_threadLock;
         }
 
         protected override async void OnSaveExecute()
         {
-
+            _threadLock = true;
             await SetupWeather(false);
 
             await _meetingRepository.SaveAsync();
             HasChanges = _meetingRepository.HasChanges();
             Id = Meeting.Id;
             RaiseDetailSavedEvent(Meeting.Id, Meeting.Title);
+            _threadLock = false;
         }
 
         private async Task SetupWeather(bool notifyUserOnFail = true)
@@ -164,7 +160,7 @@ namespace FriendOrganizer.UI.ViewModel
             {
                 if (notifyUserOnFail)
                 {
-                    await MessageDialogService.ShowInfoDialogAsync($"Failed to connect to weather service. Please check your internet connection");
+                    await MessageDialogService.ShowInfoDialogAsync("Failed to connect to weather service. Please check your internet connection");
                 }
                 Weathers.Clear();
             }
@@ -234,7 +230,10 @@ namespace FriendOrganizer.UI.ViewModel
                 {
                     HasChanges = _meetingRepository.HasChanges();
                 }
-
+                if (e.PropertyName == nameof(Meeting.LocationName))
+                {
+                    ((DelegateCommand)LoadWeatherCommand).RaiseCanExecuteChanged();
+                }
                 if (e.PropertyName == nameof(Meeting.HasErrors))
                 {
                     ((DelegateCommand)SaveCommand).RaiseCanExecuteChanged();
@@ -278,7 +277,17 @@ namespace FriendOrganizer.UI.ViewModel
         {
             return SelectedAvailableFriend != null;
         }
+        private bool OnLoadWeatherCanExecute()
+        {
+            return !string.IsNullOrEmpty(Meeting.LocationName) && !_threadLock;
+        }
 
+        private async void OnLoadWeatherExecute()
+        {
+            _threadLock = true;
+            await SetupWeather();
+            _threadLock = false;
+        }
         private void OnAddFriendExecute()
         {
             var friendToAdd = SelectedAvailableFriend;

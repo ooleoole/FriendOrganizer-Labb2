@@ -13,7 +13,7 @@ namespace FriendOrganizer.UI.ViewModel
 {
     public class MainViewModel : ViewModelBase
     {
-        private IEventAggregator _eventAggregator;
+        private readonly IEventAggregator _eventAggregator;
         private IDetailViewModel _selectedDetailViewModel;
         private readonly IMessageDialogService _messageDialogService;
         private readonly IIndex<string, IDetailViewModel> _detailViewModelCreator;
